@@ -17,6 +17,7 @@ void Cost::operator()(ADvector &constraints, ADvector &vars) {
     /* Compute the cost */
     Control<CppAD::AD < T>>
     control(vars.data());
+    CppAD::AD <T> scale = 1;
     for (size_t t = 0; t < N; ++t) {
 
         /* Calculate x(t) */
@@ -37,7 +38,11 @@ void Cost::operator()(ADvector &constraints, ADvector &vars) {
          * this might otherwise be some ridiculously large number.
          * Hitting the velocity target is our least concern. Our main priority
          * is making sure that the car safely goes around the track */
-        cost += CppAD::pow((States::v(x.data()) - reference_velocity), 2);
+        CppAD::AD <T> v = States::v(x.data());
+        if (v < 0.01)
+            cost += velocity_scale / CppAD::pow(0.01, 2);
+        else
+            cost += velocity_scale / CppAD::pow(v, 2);
 
         /* Minimize the value gap between sequential actuations.
          * This depends on velocity because when we are going very fast
@@ -46,8 +51,7 @@ void Cost::operator()(ADvector &constraints, ADvector &vars) {
          * and should therefore help us avoid instability.
          */
         if (t < N - 1)
-            cost += CppAD::pow(control.steering_angle(t + 1) - control.steering_angle(t), 2) *
-                    CppAD::pow(States::v(x.data()), 2);
+            cost += CppAD::pow(control.steering_angle(t + 1) - control.steering_angle(t), 2) * CppAD::pow(v, 2);
     }
 }
 

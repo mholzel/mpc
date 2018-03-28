@@ -10,16 +10,9 @@
 using std::cout;
 using std::endl;
 
-void print_state(const std::vector<T> &state) {
-    for (size_t i = 0; i < state.size(); ++i)
-        cout << state[i] + 1e-4 << ", ";
-    cout << endl;
-}
-
 void MPC::solve(const std::vector<T> &initial_state,
                 const std::vector<T> &reference_polynomial,
-                const std::vector<T> &previous_controls,
-                const T global_psi) {
+                const std::vector<T> &previous_controls) {
 
     typedef CPPAD_TESTVECTOR(
     double) Dvector;
@@ -44,82 +37,14 @@ void MPC::solve(const std::vector<T> &initial_state,
      *
      * ---------------------------------------------------------------------
      */
-    /* Here we update our time delay estimate if this is not the first time solving the MPC problem */
-    T to = Control<T>::throttle(previous_controls.data()); // throttle_optimized
-    T so = Control<T>::steering_angle(previous_controls.data());; // steering_optimized
-    T vc = State<T>::v(initial_state.data()); // v_current
-    T pc = global_psi -
-           previous_global_psi; // psi_current. We need to do it like this because psi is continuously reset to 0
-    if (initialized) {
-
-        /* The instantaneous time delay is estimated to be the most likely
-         * time delay which fits the previous samples.
-         *
-         * Specifically, in the previous iteration, we were given a
-         * previous velocity, psi, throttle, and steering angle
-         * (these are values from two time-steps ago relative to the present).
-         * The assumption is that the previous throttle and steering angle
-         * (from two timesteps ago) are being used until the simulator receives
-         * our optimized throttle and steering angle from the last iteration
-         * (one timestep ago).
-         * It will then use these values until we give it a new command.
-         * However, we don't know what the time delay is between when we send a command, and when
-         * it will be implemented by the simulator. So we need to estimate it.
-         * We also need to estimate the time between consecutive control commands.
-         * In summary, our equations look like:
-         *
-            v_intermediate = v_previous + throttle_previous * time_delay;
-            v_current = v_intermediate + throttle_optimized * time_until_next_control;
-
-            psi_intermediate = psi_previous + v_previous * steering_previous / Lf * time_delay;
-            psi_current = psi_intermediate + v_intermediate * steering_optimized / Lf * time_until_next_control;
-
-            Solving this system of equations yields two possible solutions:
-         */
-        T sqrt_term = sqrt(pow(so, 2) * pow(tp, 2) * pow(vc, 2) + pow(sp, 2) * pow(to, 2) * pow(vp, 2) -
-                           4 * so * sp * to * tp * pow(vp, 2) - 4 * Lf * pc * so * to * pow(tp, 2) +
-                           4 * Lf * pp * so * to * pow(tp, 2) + 2 * so * sp * to * tp * vc * vp);
-        T td1 = +(sqrt_term + so * tp * vc - 2 * so * tp * vp + sp * to * vp) / (2 * so * pow(tp, 2));
-        T td2 = -(sqrt_term - so * tp * vc + 2 * so * tp * vp - sp * to * vp) / (2 * so * pow(tp, 2));
-
-        /* We only permit time delay estimates in the range [ 0, .5 ].
-         * If one of these values is inside that range, update the time delay estimate
-         */
-        if (td1 >= 0 && td1 <= 0.5) {
-            time_delay = current_td_scale * td1 + past_td_scale * time_delay;
-            cout << "Valid time delay estimate : " << td1 << endl;
-        } else if (td2 >= 0 && td2 <= 0.5) {
-            time_delay = current_td_scale * td2 + past_td_scale * time_delay;
-            cout << "Valid time delay estimate : " << td2 << endl;
-        } else {
-            cout << "Both time delay estimates were invalid: " << td1 << ", " << td2 << endl;
-        }
-
-    } else {
-        initialized = true;
-    }
-
-    /* Update the cached values */
-    tp = to;
-    sp = so;
-    vp = vc;
-    pp = 0;
-    previous_global_psi = global_psi;
-
-    /* Now that we have updated our time delay estimate, we will shift our initial state to
-     * value that we think it will be at when the simulator actually receives our command. */
-    // TODO
-    time_delay = 0.1;
-    Cost tmp_cost(Lf, initial_state, reference_polynomial, N, time_delay, reference_velocity);
+    /* Shift our initial state to value that we think it will be at
+     * when the simulator actually receives our command. */
+    T time_delay = 0.1;
+    Cost tmp_cost(Lf, initial_state, reference_polynomial, N, time_delay, velocity_scale);
     std::vector<T> initial_state_after_delay = initial_state;
     tmp_cost.dynamics(initial_state_after_delay.data(),
                       const_cast<T *>(initial_state.data()),
                       const_cast<T *>(previous_controls.data()));
-
-    cout << time_delay << ", Initial state " << endl;
-    print_state(initial_state);
-    cout << "Initial state after time delay" << endl;
-    print_state(initial_state_after_delay);
 
     /*
      * ---------------------------------------------------------------------
@@ -128,8 +53,7 @@ void MPC::solve(const std::vector<T> &initial_state,
      *
      * ---------------------------------------------------------------------
      */
-    // TODO Change to initial_state_after_delay
-    Cost cost(Lf, initial_state_after_delay, reference_polynomial, N, dt, reference_velocity);
+    Cost cost(Lf, initial_state_after_delay, reference_polynomial, N, dt, velocity_scale);
 
     /*
      * ---------------------------------------------------------------------

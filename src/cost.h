@@ -21,7 +21,7 @@ public:
     const std::vector<T> reference_polynomial;
     const size_t N;
     const T dt;
-    const T reference_velocity;
+    const T velocity_scale;
     const size_t n_states = 4;
 
     /* Declared to avoid repeated reallocation */
@@ -33,13 +33,13 @@ public:
          const std::vector<T> &reference_polynomial,
          size_t N,
          T dt,
-         T reference_velocity)
+         T velocity_scale)
             : Lf(Lf),
               initial_state(initial_state),
               reference_polynomial(reference_polynomial),
               N(N),
               dt(dt),
-              reference_velocity(reference_velocity),
+              velocity_scale(velocity_scale),
               x(n_states),
               x0(n_states) {
         assert(initial_state.size() == n_states);

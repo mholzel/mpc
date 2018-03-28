@@ -81,15 +81,15 @@ T stringTo(const std::string &str) {
 int main(int argc, char *argv[]) {
 
     /* See if the user passed default values */
-    const size_t N = argc > 1 ? stringTo<size_t>(argv[1]) : 10;
-    const T dt = argc > 2 ? stringTo<T>(argv[2]) : .1;
-    const T reference_velocity = argc > 3 ? stringTo<T>(argv[3]) : 40;
+    const T velocity_scale = argc > 3 ? stringTo<T>(argv[1]) : 1;
+    const size_t N = argc > 2 ? stringTo<size_t>(argv[2]) : 10;
+    const T dt = argc > 3 ? stringTo<T>(argv[3]) : .066;
 
+    /* Get ready to use WebSockets!!! */
     uWS::Hub h;
 
     /* Create the model predictive controller */
-    const T initial_time_delay_estimate = 0.1;
-    MPC mpc(N, dt, reference_velocity, initial_time_delay_estimate);
+    MPC mpc(N, dt, velocity_scale);
 
     /* Handle a new message */
     h.onMessage([&mpc](uWS::WebSocket <uWS::SERVER> ws,
@@ -117,7 +117,6 @@ int main(int argc, char *argv[]) {
                     const T v = j[1]["speed"];
                     const T previous_angle = j[1]["steering_angle"];
                     const T previous_throttle = j[1]["throttle"];
-                    const T global_psi = psi;
 
                     /* Translate the global coordinate system to the origin of the car's reference frame. */
                     for (size_t i = 0; i < ptsx.size(); ++i) {
@@ -147,7 +146,7 @@ int main(int argc, char *argv[]) {
                      * values in the fields normalized_xxx */
                     const std::vector<T> state = {px, py, psi, v};
                     const std::vector<T> previous_controls = {-previous_angle, previous_throttle};
-                    mpc.solve(state, reference_polynomial, previous_controls, global_psi);
+                    mpc.solve(state, reference_polynomial, previous_controls);
 
                     /* Now put all of the data in a message that we will pass back to the simulator. */
                     json msgJson;
@@ -177,7 +176,6 @@ int main(int argc, char *argv[]) {
                     //
                     // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
                     // SUBMITTING.
-                    // TODO
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
                 }
