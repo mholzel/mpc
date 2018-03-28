@@ -105,6 +105,14 @@ There are two things I want to draw your attention to here:
 
 ## The Code
 
+To compile the code, you should create a `build` folder in your repo. Then 
+
+```
+cd build
+cmake .. 
+make
+```
+
 Once compiled, you can run our controller for the command line with no arguments:
 
 ```
@@ -113,7 +121,7 @@ Once compiled, you can run our controller for the command line with no arguments
 
 However, if you want to tune this controller for a specific scenario, you can specify any number of the following arguments:
 
-1. The `velocity_scale`, $\alpha$, defined in the previous section. The default value is 1 ("cautious driver"), but you should try running this with 1000 to see how fast we can go:
+1. The `velocity_scale`, $\alpha$, was defined in the previous section. The default value is 1 ("cautious driver"), but you should try running this with 1000 to see how fast we can go:
 
    ```
    ./mpc 1000
@@ -141,16 +149,45 @@ With that being said, I would recommend that you only mess with the velocity sca
 
 ## Results
 
+All of the following results are shown on the "Fantastic" video setting. You should use that setting to replicate our results. 
+
+### Cautious Driver, Correct Time Delay
+
+First, let's see how the MPC does when we use all of the default values ($\alpha = 1$, and time delay = 0.1s):
+
 <video controls="controls" width=100%>
-  <source type="video/mp4" src="videos/result.mp4"></source>
+  <source type="video/mp4" src="videos/mpc_1.mp4"></source>
 </video>
 
-NOTE: This controller was optimized for the "Fastest" video setting. Since the sample rate depends on this parameter, you should use the same setting. 
+As you can see, this controller slows down significantly at the corners, but stays very close to the center of the lane throughout the simulation.
+
+### Race Car Driver, Correct Time Delay 
+
+If you want to go faster, then you can increase the `velocity_scale`, $\alpha$. In the following video, we increase $\alpha$ to 1000, and use the default time delay (0.1s).
+
+<video controls="controls" width=100%>
+  <source type="video/mp4" src="videos/mpc_1000.mp4"></source>
+</video>
+
+Now you can see the car really flying around the track, and staying pretty close to the center line while doing so.
+
+### Cautious Driver, Assuming No Time Delay
+
+The code is set up so that there will be a time delay of at least 0.1s. Internally, the MPC has it's own estimate of this value. In the following video, we use the "cautious driver" setting ($\alpha = 1$), and we tell the MPC that there is no time delay (even though there definitely is). 
+
+<video controls="controls" width=100%>
+  <source type="video/mp4" src="videos/mpc_1_0.mp4"></source>
+</video>
+
+In this video, we don't see that much performance degradation. That is probably because the car is going too slow to really notice it. 
+
+### Race Car Driver, Assuming No Time Delay
+
+As a final test case, we will use the race car driver setting ($\alpha=1000$), and again tell the MPC that there is no time delay (even though there definitely is one). In the following video, we see that this introduces some oscillatory behavior into the controller, but doesn't completely destabilize it. 
+
+<video controls="controls" width=100%>
+  <source type="video/mp4" src="videos/mpc_1000_0.mp4"></source>
+</video>
 
 
-## Quick start 
 
-1. Clone this repo.
-2. Make a build directory: `mkdir build && cd build`
-3. Compile: `cmake .. && make`
-4. Run it: `./pid`. 
