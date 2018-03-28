@@ -88,8 +88,10 @@ int main(int argc, char *argv[]) {
     uWS::Hub h;
 
     /* Create the model predictive controller */
-    MPC mpc(N, dt, reference_velocity);
+    const T initial_time_delay_estimate = 0.1;
+    MPC mpc(N, dt, reference_velocity, initial_time_delay_estimate);
 
+    /* Handle a new message */
     h.onMessage([&mpc](uWS::WebSocket <uWS::SERVER> ws,
                        char *data,
                        size_t length,
@@ -99,7 +101,6 @@ int main(int argc, char *argv[]) {
         // The 4 signifies a websocket message
         // The 2 signifies a websocket event
         string sdata = string(data).substr(0, length);
-        cout << sdata << endl;
         if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
             string s = hasData(sdata);
             if (s != "") {
@@ -116,6 +117,7 @@ int main(int argc, char *argv[]) {
                     const T v = j[1]["speed"];
                     const T previous_angle = j[1]["steering_angle"];
                     const T previous_throttle = j[1]["throttle"];
+                    const T global_psi = psi;
 
                     /* Translate the global coordinate system to the origin of the car's reference frame. */
                     for (size_t i = 0; i < ptsx.size(); ++i) {
@@ -137,8 +139,6 @@ int main(int argc, char *argv[]) {
                     /* Fit a polynomial through the waypoints. This requires us to translate the coordinates from
                      * the global coordinate system to the local one. */
                     const auto coeffs = polyfit<3>(ptsx, ptsy);
-                    std::cout << "Coeffs : " << coeffs << endl
-                              << endl;
                     const std::vector<T> reference_polynomial(coeffs.data(), coeffs.data() + coeffs.size());
 
                     /* Compute the crosstracking error and orientation error.
@@ -160,8 +160,8 @@ int main(int argc, char *argv[]) {
                      * After computing the solution, the MPC saves these normalized
                      * values in the fields normalized_xxx */
                     const std::vector<T> state = {px, py, psi, v, cte, epsi};
-                    const std::vector<T> previous_controls = {previous_angle, previous_throttle};
-                    mpc.solve(state, reference_polynomial, previous_controls);
+                    const std::vector<T> previous_controls = {-previous_angle, previous_throttle};
+                    mpc.solve(state, reference_polynomial, previous_controls, global_psi);
 
                     /* Now put all of the data in a message that we will pass back to the simulator. */
                     json msgJson;
@@ -180,7 +180,7 @@ int main(int argc, char *argv[]) {
                     msgJson["next_y"] = ptsy_fit;
 
                     auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-                    cout << endl << endl << "Message : " << endl << msg << endl << endl;
+//                    cout << endl << endl << "Message : " << endl << msg << endl << endl;
 
                     // Latency
                     // The purpose is to mimic real driving conditions where
@@ -192,7 +192,7 @@ int main(int argc, char *argv[]) {
                     // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
                     // SUBMITTING.
                     // TODO
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+//                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
                 }
             } else {

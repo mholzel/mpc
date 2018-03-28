@@ -16,7 +16,7 @@ public:
     using Controls = Control<CppAD::AD < T>>;
 
     /* Constants */
-    const T Lf = 2.67;
+    const T Lf;
     const std::vector<T> initial_state;
     const std::vector<T> reference_polynomial;
     const size_t N;
@@ -28,12 +28,14 @@ public:
     std::vector<CppAD::AD < T>> x;
     std::vector<CppAD::AD < T>> x0;
 
-    Cost(const std::vector<T> &initial_state,
+    Cost(const T Lf,
+         const std::vector<T> &initial_state,
          const std::vector<T> &reference_polynomial,
          size_t N,
          T dt,
          T reference_velocity)
-            : initial_state(initial_state),
+            : Lf(Lf),
+              initial_state(initial_state),
               reference_polynomial(reference_polynomial),
               N(N),
               dt(dt),
