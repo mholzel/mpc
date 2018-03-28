@@ -1,10 +1,8 @@
-# Pass the Ipopt source directory as the first argument
-if [ -z $1 ]
-then
-    echo "Specifiy the location of the Ipopt source directory in the first argument."
-    exit
-fi
-cd $1
+wget https://www.coin-or.org/download/source/Ipopt/Ipopt-3.12.9.zip
+unzip Ipopt-3.12.9.zip 
+rm Ipopt-3.12.9.zip
+mv Ipopt-3.12.9 ipopt
+cd ipopt
 
 prefix=/usr/local
 srcdir=$PWD
@@ -34,6 +32,10 @@ cd $srcdir/ThirdParty/ASL
 # MUMPS
 cd $srcdir/ThirdParty/Mumps
 ./get.Mumps
+
+# Metis
+cd $srcdir/ThirdParty/Metis
+./get.Metis
 
 # build everything
 cd $srcdir
