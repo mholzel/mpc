@@ -39,8 +39,7 @@ void MPC::solve(const std::vector<T> &initial_state,
      */
     /* Shift our initial state to value that we think it will be at
      * when the simulator actually receives our command. */
-    T time_delay = 0.1;
-    Cost tmp_cost(Lf, initial_state, reference_polynomial, N, time_delay, velocity_scale);
+    Cost tmp_cost(Lf, initial_state, reference_polynomial, N, time_delay_estimate, velocity_scale);
     std::vector<T> initial_state_after_delay = initial_state;
     tmp_cost.dynamics(initial_state_after_delay.data(),
                       const_cast<T *>(initial_state.data()),

@@ -81,15 +81,16 @@ T stringTo(const std::string &str) {
 int main(int argc, char *argv[]) {
 
     /* See if the user passed default values */
-    const T velocity_scale = argc > 3 ? stringTo<T>(argv[1]) : 1;
-    const size_t N = argc > 2 ? stringTo<size_t>(argv[2]) : 10;
-    const T dt = argc > 3 ? stringTo<T>(argv[3]) : .066;
+    const T velocity_scale = argc > 1 ? stringTo<T>(argv[1]) : 1;
+    const T time_delay_estimate = argc > 2 ? stringTo<T>(argv[2]) : .1;
+    const size_t N = argc > 3 ? stringTo<size_t>(argv[3]) : 10;
+    const T dt = argc > 4 ? stringTo<T>(argv[4]) : .066;
 
     /* Get ready to use WebSockets!!! */
     uWS::Hub h;
 
     /* Create the model predictive controller */
-    MPC mpc(N, dt, velocity_scale);
+    MPC mpc(N, dt, time_delay_estimate, velocity_scale);
 
     /* Handle a new message */
     h.onMessage([&mpc](uWS::WebSocket <uWS::SERVER> ws,

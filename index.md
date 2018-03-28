@@ -1,108 +1,156 @@
-# CarND-Controls-MPC
-Self-Driving Car Engineer Nanodegree Program
+# Model Predictive Control for Autonomous Vehicles
+In this project, we will use [*model predictive control* (MPC)](https://en.wikipedia.org/wiki/Model_predictive_control) to steer a car around a track in `Project 5: MPC Controller` of [this simulator](https://github.com/udacity/self-driving-car-sim/releases). Specifically, we will develop a model predictive controller in C++ which uses [IPOPT](https://projects.coin-or.org/Ipopt) to solve the MPC optimization problem, and then uses [micro WebSockets (µWS)](https://github.com/uNetworking/uWebSockets) to communicate with the simulator. 
 
----
+## Problem Setup
 
-## Dependencies
+At each iteration, the simulator sends us a message containing the following data expressed in the simulator's inertial reference frame (not the car's reference frame):
 
-* cmake >= 3.5
- * All OSes: [click here for installation instructions](https://cmake.org/install/)
-* make >= 4.1(mac, linux), 3.81(Windows)
-  * Linux: make is installed by default on most Linux distros
-  * Mac: [install Xcode command line tools to get make](https://developer.apple.com/xcode/features/)
-  * Windows: [Click here for installation instructions](http://gnuwin32.sourceforge.net/packages/make.htm)
-* gcc/g++ >= 5.4
-  * Linux: gcc / g++ is installed by default on most Linux distros
-  * Mac: same deal as make - [install Xcode command line tools]((https://developer.apple.com/xcode/features/)
-  * Windows: recommend using [MinGW](http://www.mingw.org/)
-* [uWebSockets](https://github.com/uWebSockets/uWebSockets)
-  * Run either `install-mac.sh` or `install-ubuntu.sh`.
-  * If you install from source, checkout to commit `e94b6e1`, i.e.
-    ```
-    git clone https://github.com/uWebSockets/uWebSockets
-    cd uWebSockets
-    git checkout e94b6e1
-    ```
-    Some function signatures have changed in v0.14.x. See [this PR](https://github.com/udacity/CarND-MPC-Project/pull/3) for more details.
+1. A vector of `(x,y)` coordinates for some upcoming waypoints that we should try to pass through.
+2. The current `(x,y)` coordinates of the car. 
+3. The orientation `psi` of the car. 
+4. The velocity `v` of the car. 
 
-* **Ipopt and CppAD:** Please refer to [this document](https://github.com/udacity/CarND-MPC-Project/blob/master/install_Ipopt_CppAD.md) for installation instructions.
-* [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page). This is already part of the repo so you shouldn't have to worry about it.
-* Simulator. You can download these from the [releases tab](https://github.com/udacity/self-driving-car-sim/releases).
-* Not a dependency but read the [DATA.md](./DATA.md) for a description of the data sent back from the simulator.
+After sending us a message, the simulator waits for us to return a steering angle and throttle to use during the next iteration. 
+
+One of the difficulties in this project is that we will be artificially introducing a time delay for the control signal. Specifically, the main function of our program looks like this:
+
+```
+int main(int argc, char *argv[]) {
+
+    /* Set up the websockets */
+    ...   
+    
+    /* Create the model predictive controller */
+    MPC mpc(...);
+    
+    /* Handle a new message from the simulator */
+    h.onMessage([&mpc](uWS::WebSocket <uWS::SERVER> ws,
+                       char *data,
+                       size_t length,
+                       uWS::OpCode opCode) {
+
+		/* Get the waypoints, position, orientation, and velocity */
+		waypoints = ...
+
+	    /* Use the model predictive controller to compute the control values */
+	    mpc.solve(...);
+        
+        /* Put this thread to sleep to simulate a time delay */
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        
+        /* Now send our control commands */
+        send( mpc.steering_angle, mpc.throttle );
+    });
+    
+    return 0;
+}
+```
+
+Stably controlling the car despite this time delay is the primary challenge of this project.
+
+## The Model  
+
+As the name suggests, a model predictive controller needs a model of the system, which it will use to predict how the system will respond to hypothetical inputs given the current state of the system. The model predictive control then defines a cost function over some finite horizon of future inputs, and chooses the control which it believes will minimize the cost function over that horizon.  
+
+In our case, we will use a very simple model of the car's dynamics, where the state vector contains the following values in the car's coordinate system:
+
+1. The current `(x,y)` coordinates of the car. 
+2. The orientation `psi` of the car. 
+3. The velocity `v` of the car. 
+
+Specifically,
+$$
+\dfrac{d}{dt}\left[ \begin{array}{ccc} x(t) \\ y(t) \\ \psi(t) \\ v(t) \end{array} \right] = 
+\left[ \begin{array}{ccc} v(t) \cos(\psi(t)) \\ v(t) \sin(\psi(t)) \\ 0 \\ 0 \end{array} \right] +
+\left[ \begin{array}{ccc} 0 & 0 \\ 0 & 0  \\ v(t) / L_f & 0 \\ 0 & 1 \end{array} \right] 
+\left[ \begin{array}{ccc} \texttt{steering_angle}(t)  \\ \texttt{throttle}(t) \end{array} \right]
+$$
+where $L_f$ is an empirically-determined constant related to the turning radius of the car. For instance, in our simulations, we will use a value of $L_f = 2.67$.
+
+Actually, since we are implementing a digital controller, we need the discrete-time form of these equations. Hence we use the following approximation
+$$
+\left[ \begin{array}{ccc} x(t + h) \\ y(t+ h) \\ \psi(t+ h) \\ v(t+ h) \end{array} \right] = 
+\left[ \begin{array}{ccc} x(t) + h v(t) \cos(\psi(t)) \\ y(t) + h v(t) \sin(\psi(t)) \\ \psi(t) \\ v(t) \end{array} \right] +
+\left[ \begin{array}{ccc} 0 & 0 \\ 0 & 0  \\ h v(t) / L_f & 0 \\ 0 & h \end{array} \right] 
+\left[ \begin{array}{ccc} \texttt{steering_angle}(t)  \\ \texttt{throttle}(t) \end{array} \right]
+$$
+where $h$ denotes the sampling period.
+
+## MPC Cost Function
+
+Cost function design is more of an art than a science. In our case, we want a cost function that balances the following objectives:
+
+1. Stay as close as possible to the waypoints.
+2. Go as fast as possible around the track. 
+3. Minimize the change in steering angle from timestep to timestep. 
+
+The first two points should be obvious. While you might understand why the third point is important, you probably are underestimating its significance... 
+
+Due to the fact that we might have a large time delay in our problem, it is vitally import that the controller does not make any sharp movements. This is important because if there is a time delay, but the control signal is smooth (in a qualitative, not mathematical sense), then we won't really feel the effect of that time delay because the control that we want to use at the current time step is very similar to the one we used at the previous time step. This is the core principle we will use to overcome time-delay errors. 
+
+As for how we will achieve objective 1 - well, in that regard, we will simply fit a $3^{rd}$ order polynomial $f(x)$ to the waypoints, and then try to minimize the predicted crosstrack error, that is, the difference between $f(x)$ and predicted $y$-positions of the car over some finite horizon.
+
+So let's get to to it... To compute the cost function, we will simulate the system $N$ time steps into the future with sample period $h$. Specifically, the model predictive controller internally has an estimate $d$ of the time delay. When the simulator gives the MPC an initial state $\texttt{state}(t-d)$, the MPC propagates that state to time $t$, after which it predicts the values $\texttt{state}(t+h), \ldots, \texttt{state}(t+Nh)$ using the above-mentioned model. Then we define the cost function $J$ to be 
+$$
+J =  \left( \sum_{k=1}^N \Big[  f(x(t_k)) - y(t_k) \Big]^2 + \dfrac{\alpha}{\max( v(t_k), 0.01 )^2}  \right) + \left( \sum_{k=1}^{N-1} \Big[ u(t_{k+1}) - u(t_k) \Big]^2 v^2(t_k) \right)
+$$
+where $t_k = t + kh$. The first term ensures that the car will stay close to the waypoints, the second term penalizes the car for going slow, and the third term ensures that the result is smooth. 
+
+There are two things I want to draw your attention to here:
+
+1. The coefficient $\alpha$ is a design parameter which controls how much we will penalize the car for going slow. In the simulator, the default value is 1, which means "cautious driver". I have tried values up to 1000, which means "race car driver". This almost always works out well, and is really fun to watch :).
+2. The third term, which smoothes out the control is weighted by the square of the velocity. This means that when going fast, we really want to make sure that the control is smooth. If we are going slow, then we don't really care. This multiplier is significant because we will pay more dearly for errors at high speeds, than at low speeds. You know that...
+
+> We solve this optimization problem with IPOPT at each time step, and implement only the subsequent control value, despite the fact that we have predicted $N$ time steps into the future. 
+
+## The Code
+
+Once compiled, you can run our controller for the command line with no arguments:
+
+```
+./mpc
+```
+
+However, if you want to tune this controller for a specific scenario, you can specify any number of the following arguments:
+
+1. The `velocity_scale`, $\alpha$, defined in the previous section. The default value is 1 ("cautious driver"), but you should try running this with 1000 to see how fast we can go:
+
+   ```
+   ./mpc 1000
+   ```
+
+2. The time delay assumed by the model predictive controller. Internally, the model predictive has some hard-coded estimate of the time delay. To account for time delay, we simply take the initial state provided by the simulator and propagate that state using our dynamic model into the future by the specified time delay. We have to do this because our control will only take effect after this delay, so the value of the state after this propagation represents the actual initial state for the system when the first control command arrives. To change this value, you simply specify a second argument. For instance, the default MPC code uses the same time delay 0.1s, as the amount of time that we put the code to sleep. If you want to see what happens when you assume that there is no time delay and a velocity scale of 30, then you could run our program with 
+
+   ```
+   ./mpc 30 0
+   ```
+
+3. The number of time steps $N$ to perform the optimization over. The default value is 10. The danger in modifying this is that when $N$ is too large, then computing the optimal solution may take too long. In this case, you are introducing your own new time delay into the problem due to the computation time. Even increasing this value to 15 seems to have a significant effect on the quality of the solution. If you want to specify $\alpha=55$, time delay of 0.02, and $N = 15$, you would use:
+
+   ```
+   ./mpc 55 0.02 15
+   ```
+
+4. The sample time step $h$ used in computing the prediction horizon. To compute the cost function, we predict what the states will be at times $t+h,\ldots,t+Nh$. You can change this value of $h$. The default value is 0.66. If you want to try 1-second sampling intervals, then you could run 
+
+   ```
+   ./mpc 55 0.02 15 1
+   ```
+
+With that being said, I would recommend that you only mess with the velocity scale and the time delay assumed by the MPC algorithm. The other values are highly tuned, and changing them does not appear to improve performance. 
+
+## Results
+
+<video controls="controls" width=100%>
+  <source type="video/mp4" src="videos/result.mp4"></source>
+</video>
+
+NOTE: This controller was optimized for the "Fastest" video setting. Since the sample rate depends on this parameter, you should use the same setting. 
 
 
-## Basic Build Instructions
+## Quick start 
 
 1. Clone this repo.
 2. Make a build directory: `mkdir build && cd build`
 3. Compile: `cmake .. && make`
-4. Run it: `./mpc`.
-
-## Tips
-
-1. It's recommended to test the MPC on basic examples to see if your implementation behaves as desired. One possible example
-is the vehicle starting offset of a straight line (reference). If the MPC implementation is correct, after some number of timesteps
-(not too many) it should find and track the reference line.
-2. The `lake_track_waypoints.csv` file has the waypoints of the lake track. You could use this to fit polynomials and points and see of how well your model tracks curve. NOTE: This file might be not completely in sync with the simulator so your solution should NOT depend on it.
-3. For visualization this C++ [matplotlib wrapper](https://github.com/lava/matplotlib-cpp) could be helpful.)
-4.  Tips for setting up your environment are available [here](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/0949fca6-b379-42af-a919-ee50aa304e6a/lessons/f758c44c-5e40-4e01-93b5-1a82aa4e044f/concepts/23d376c7-0195-4276-bdf0-e02f1f3c665d)
-5. **VM Latency:** Some students have reported differences in behavior using VM's ostensibly a result of latency.  Please let us know if issues arise as a result of a VM environment.
-
-## Editor Settings
-
-We've purposefully kept editor configuration files out of this repo in order to
-keep it as simple and environment agnostic as possible. However, we recommend
-using the following settings:
-
-* indent using spaces
-* set tab width to 2 spaces (keeps the matrices in source code aligned)
-
-## Code Style
-
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
-
-## Project Instructions and Rubric
-
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
-
-More information is only accessible by people who are already enrolled in Term 2
-of CarND. If you are enrolled, see [the project page](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/f1820894-8322-4bb3-81aa-b26b3c6dcbaf/lessons/b1ff3be0-c904-438e-aad3-2b5379f0e0c3/concepts/1a2255a0-e23c-44cf-8d41-39b8a3c8264a)
-for instructions and the project rubric.
-
-## Hints!
-
-* You don't have to follow this directory structure, but if you do, your work
-  will span all of the .cpp files here. Keep an eye out for TODOs.
-
-## Call for IDE Profiles Pull Requests
-
-Help your fellow students!
-
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to we ensure
-that students don't feel pressured to use one IDE or another.
-
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
-
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
-
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
-
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
-
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
+4. Run it: `./pid`. 

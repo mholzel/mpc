@@ -10,6 +10,7 @@ class MPC {
     /* Constants used to define the optimization problem */
     const size_t N;
     const T dt;
+    const T time_delay_estimate;
     const T velocity_scale;
     const T Lf = 2.67;
 
@@ -24,9 +25,11 @@ public:
     /* Constructor */
     MPC(size_t N,
         T dt,
+        T time_delay_estimate,
         T velocity_scale)
             : N(N),
               dt(dt),
+              time_delay_estimate(time_delay_estimate),
               velocity_scale(velocity_scale) {
     }
 

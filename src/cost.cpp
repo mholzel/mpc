@@ -1,4 +1,5 @@
 #include "cost.h"
+#include <iostream>
 
 /**
   * This is where the cost is actually computed.
