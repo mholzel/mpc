@@ -141,25 +141,11 @@ int main(int argc, char *argv[]) {
                     const auto coeffs = polyfit<3>(ptsx, ptsy);
                     const std::vector<T> reference_polynomial(coeffs.data(), coeffs.data() + coeffs.size());
 
-                    /* Compute the crosstracking error and orientation error.
-                     *
-                     * The crosstrack error is calculated by computing the difference between
-                     * the current y-position, and the value of the polynomial that we fit to the waypoints
-                     * (by evaluating the polynomial at the current x-position).
-                     */
-                    const T cte = polyeval(reference_polynomial, px) - py;
-
-                    /* This is a simplification that is possible because we have shifted the
-                     * waypoints to the center of the car's coordinate system (where x = 0). Otherwise,
-                     * we would have to compute this by evaluating the derivative of the polynomial
-                     * at the current x-position. */
-                    const T epsi = psi - atan(reference_polynomial[1]);
-
                     /* Calculate steering angle and throttle using MPC.
                      * The simulator wants these values in the range [-1,1].
                      * After computing the solution, the MPC saves these normalized
                      * values in the fields normalized_xxx */
-                    const std::vector<T> state = {px, py, psi, v, cte, epsi};
+                    const std::vector<T> state = {px, py, psi, v};
                     const std::vector<T> previous_controls = {-previous_angle, previous_throttle};
                     mpc.solve(state, reference_polynomial, previous_controls, global_psi);
 
@@ -192,7 +178,7 @@ int main(int argc, char *argv[]) {
                     // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
                     // SUBMITTING.
                     // TODO
-//                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
                 }
             } else {

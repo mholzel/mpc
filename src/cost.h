@@ -22,7 +22,7 @@ public:
     const size_t N;
     const T dt;
     const T reference_velocity;
-    const size_t n_states = 6;
+    const size_t n_states = 4;
 
     /* Declared to avoid repeated reallocation */
     std::vector<CppAD::AD < T>> x;

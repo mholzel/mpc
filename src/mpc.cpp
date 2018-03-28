@@ -31,7 +31,7 @@ void MPC::solve(const std::vector<T> &initial_state,
      *
      * ---------------------------------------------------------------------
      */
-    const size_t n_states = 6;
+    const size_t n_states = 4;
     const size_t n_controls = 2;
     const size_t n_vars = N * n_controls;
     const size_t n_constraints = 0;
@@ -109,7 +109,7 @@ void MPC::solve(const std::vector<T> &initial_state,
     /* Now that we have updated our time delay estimate, we will shift our initial state to
      * value that we think it will be at when the simulator actually receives our command. */
     // TODO
-//    time_delay = 0.1;
+    time_delay = 0.1;
     Cost tmp_cost(Lf, initial_state, reference_polynomial, N, time_delay, reference_velocity);
     std::vector<T> initial_state_after_delay = initial_state;
     tmp_cost.dynamics(initial_state_after_delay.data(),
@@ -128,6 +128,7 @@ void MPC::solve(const std::vector<T> &initial_state,
      *
      * ---------------------------------------------------------------------
      */
+    // TODO Change to initial_state_after_delay
     Cost cost(Lf, initial_state_after_delay, reference_polynomial, N, dt, reference_velocity);
 
     /*
